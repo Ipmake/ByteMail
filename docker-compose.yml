@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: bytemail-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: bytemail
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - bytemail-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bytemail-app
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/bytemail?schema=public"
+      JWT_SECRET: "${JWT_SECRET:-change-this-to-a-random-secret-key-in-production}"
+      ENCRYPTION_KEY: "${ENCRYPTION_KEY:-change-this-to-32-char-secret!!}"
+      PORT: 3001
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - bytemail-network
+    volumes:
+      - ./backend/.env:/app/.env:ro
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  bytemail-network:
+    driver: bridge

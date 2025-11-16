@@ -1,0 +1,20 @@
+{
+  "name": "bytemail",
+  "version": "1.0.0",
+  "description": "ByteMail - A modern self-hosted webmail client",
+  "scripts": {
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build:backend": "cd backend && npm run build",
+    "build:frontend": "cd frontend && npm run build",
+    "build": "npm run build:frontend && npm run build:backend",
+    "docker:build": "docker-compose build",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "start": "./start.sh"
+  },
+  "keywords": ["email", "webmail", "imap", "smtp", "self-hosted"],
+  "author": "",
+  "license": "MIT"
+}

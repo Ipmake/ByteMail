@@ -1,0 +1,115 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String         @id @default(uuid())
+  username      String         @unique
+  password      String
+  email         String?
+  isAdmin       Boolean        @default(false)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  emailAccounts EmailAccount[]
+
+  @@map("users")
+}
+
+model ServerSettings {
+  id                    String   @id @default(uuid())
+  restrictedServer      String?  // If set, users can only add emails from this server
+  restrictedDomain      String?  // If set, users can only add emails from this domain
+  allowMultipleAccounts Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@map("server_settings")
+}
+
+model EmailAccount {
+  id            String    @id @default(uuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailAddress  String
+  displayName   String?
+  imapHost      String
+  imapPort      Int       @default(993)
+  imapSecure    Boolean   @default(true)
+  smtpHost      String
+  smtpPort      Int       @default(465)
+  smtpSecure    Boolean   @default(true)
+  username      String
+  password      String    // Encrypted
+  isActive      Boolean   @default(true)
+  lastSyncAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  folders       Folder[]
+  emails        Email[]
+
+  @@map("email_accounts")
+}
+
+model Folder {
+  id             String       @id @default(uuid())
+  emailAccountId String
+  emailAccount   EmailAccount @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
+  name           String
+  path           String
+  delimiter      String       @default("/")
+  specialUse     String?      // INBOX, SENT, DRAFTS, TRASH, JUNK, etc.
+  unreadCount    Int          @default(0)
+  totalCount     Int          @default(0)
+  lastSyncedUid  Int?         // Track highest UID synced for incremental sync
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  emails         Email[]
+
+  @@unique([emailAccountId, path])
+  @@map("folders")
+}
+
+model Email {
+  id             String       @id @default(uuid())
+  emailAccountId String
+  emailAccount   EmailAccount @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
+  folderId       String
+  folder         Folder       @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  messageId      String
+  uid            Int
+  subject        String?
+  from           Json         // Array of {name, address}
+  to             Json?        // Array of {name, address}
+  cc             Json?
+  bcc            Json?
+  replyTo        Json?
+  date           DateTime?
+  receivedDate   DateTime?
+  flags          String[]     @default([])
+  isRead         Boolean      @default(false)
+  isFlagged      Boolean      @default(false)
+  hasAttachments Boolean      @default(false)
+  size           Int          @default(0)
+  textBody       String?      @db.Text
+  htmlBody       String?      @db.Text
+  headers        Json?
+  attachments    Json?        // Array of attachment metadata
+  inReplyTo      String?
+  references     String[]     @default([])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([emailAccountId, messageId])
+  @@index([folderId])
+  @@index([date])
+  @@index([isRead])
+  @@map("emails")
+}
