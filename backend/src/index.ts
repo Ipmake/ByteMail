@@ -46,7 +46,7 @@ app.get('/api/health', (req, res) => {
 
 // Serve static files from www directory (production)
 if (process.env.NODE_ENV === 'production') {
-  const wwwPath = path.join(__dirname, '../../www');
+  const wwwPath = path.join(__dirname, '../www');
   app.use(express.static(wwwPath));
   
   app.get('{*path}', (req, res) => {
