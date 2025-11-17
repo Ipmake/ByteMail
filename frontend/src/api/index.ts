@@ -26,17 +26,10 @@ const api = axios.create({
 
 // Request interceptor to add auth token
 api.interceptors.request.use((config) => {
-  // Get token from auth store (persisted in localStorage via zustand)
-  const authStorage = localStorage.getItem('auth-storage');
-  if (authStorage) {
-    try {
-      const { state } = JSON.parse(authStorage);
-      if (state?.token) {
-        config.headers.Authorization = `Bearer ${state.token}`;
-      }
-    } catch (e) {
-      console.error('Failed to parse auth storage:', e);
-    }
+  // Get token from localStorage
+  const token = localStorage.getItem('auth-token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
@@ -137,6 +130,10 @@ export const emailsApi = {
 
   markAsFlagged: async (id: string, isFlagged: boolean): Promise<void> => {
     await api.patch(`/emails/${id}/flag`, { isFlagged });
+  },
+
+  moveEmail: async (id: string, folderId: string): Promise<void> => {
+    await api.patch(`/emails/${id}/move`, { folderId });
   },
 
   send: async (emailData: SendEmailData): Promise<void> => {
@@ -252,6 +249,32 @@ export const adminApi = {
 
   updateSettings: async (settings: Partial<ServerSettings>): Promise<ServerSettings> => {
     const { data } = await api.put<ServerSettings>('/admin/settings', settings);
+    return data;
+  },
+};
+
+// Settings API
+export const settingsApi = {
+  getSettings: async () => {
+    const { data } = await api.get('/settings');
+    return data;
+  },
+
+  updateSettings: async <T extends keyof import('../types/settings').UserSettings>(
+    category: T,
+    updates: Partial<import('../types/settings').UserSettings[T]>
+  ) => {
+    const { data } = await api.patch(`/settings/${category}`, updates);
+    return data;
+  },
+
+  resetCategory: async (category: keyof import('../types/settings').UserSettings) => {
+    const { data } = await api.post(`/settings/${category}/reset`);
+    return data;
+  },
+
+  resetAll: async () => {
+    const { data } = await api.post('/settings/reset');
     return data;
   },
 };

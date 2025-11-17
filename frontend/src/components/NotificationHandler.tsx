@@ -1,9 +1,11 @@
 import { useEffect, useRef } from 'react';
 import { useSocket } from '../hooks/useSocket';
 import { useAuthStore } from '../stores/authStore';
+import { useSettingsStore } from '../stores/settingsStore';
 import { 
   areNotificationsEnabled,
   showNewEmailNotification,
+  playNotificationSound,
 } from '../utils/notifications';
 
 interface NotificationHandlerProps {
@@ -27,6 +29,7 @@ let globalUserId: string | null = null;
 export const NotificationHandler: React.FC<NotificationHandlerProps> = ({ onNewEmail }) => {
   const socket = useSocket();
   const user = useAuthStore((state) => state.user);
+  const { settings } = useSettingsStore();
   const handlerRef = useRef<((data: unknown) => void) | null>(null);
 
   useEffect(() => {
@@ -67,6 +70,11 @@ export const NotificationHandler: React.FC<NotificationHandlerProps> = ({ onNewE
 
       console.log('📨 New email notification:', emailData);
 
+      // Play sound if enabled in settings
+      if (settings?.notifications.soundEnabled) {
+        playNotificationSound();
+      }
+
       // Show desktop notification if enabled
       if (areNotificationsEnabled()) {
         const accountInfo = emailData.accountName || emailData.emailAddress || 'your account';
@@ -99,7 +107,7 @@ export const NotificationHandler: React.FC<NotificationHandlerProps> = ({ onNewE
       // Don't clean up on normal navigation, only on actual logout
       // The listener will persist across page changes
     };
-  }, [socket.isConnected, user, socket, onNewEmail]);
+  }, [socket.isConnected, user, socket, onNewEmail, settings?.notifications.soundEnabled]);
 
   return null; // This component renders nothing
 };

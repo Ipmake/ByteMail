@@ -12,6 +12,7 @@ import {
   Button,
   Paper,
   Grid,
+  useTheme,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ReplyIcon from "@mui/icons-material/Reply";
@@ -24,10 +25,14 @@ import DownloadIcon from "@mui/icons-material/Download";
 import CloseIcon from "@mui/icons-material/Close";
 import ImageIcon from "@mui/icons-material/Image";
 import EditIcon from "@mui/icons-material/Edit";
-import { format } from "date-fns";
+import PrintIcon from "@mui/icons-material/Print";
+import DriveFileMoveIcon from "@mui/icons-material/DriveFileMove";
 import DOMPurify from "dompurify";
 import { emailsApi } from "../api";
 import type { Email } from "../types";
+import { useSettingsStore } from "../stores/settingsStore";
+import { formatEmailViewerDateTime } from "../utils/dateFormatting";
+import { MoveFolderDialog } from "./MoveFolderDialog";
 
 interface ImageModalProps {
   open: boolean;
@@ -170,12 +175,16 @@ export const EmailViewer: React.FC<EmailViewerProps> = ({
   const [email, setEmail] = useState<Email | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [imageModalOpen, setImageModalOpen] = useState(false);
+  const [moveFolderDialogOpen, setMoveFolderDialogOpen] = useState(false);
   const [selectedImage, setSelectedImage] = useState<{
     emailId: string;
     index: number;
     filename: string;
     contentType: string;
   } | null>(null);
+
+  const theme = useTheme();
+  const { settings } = useSettingsStore();
 
   useEffect(() => {
     if (emailId) {
@@ -243,6 +252,100 @@ export const EmailViewer: React.FC<EmailViewerProps> = ({
     setSelectedImage(null);
   };
 
+  const handlePrint = () => {
+    if (!email) return;
+    
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    
+    const emailDate = email.date ? formatEmailViewerDateTime(email.date, settings) : 'Unknown date';
+    const fromName = email.from[0]?.name || email.from[0]?.address || 'Unknown';
+    const toList = email.to?.map(t => t.name || t.address).join(', ') || 'Unknown';
+    
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Print: ${email.subject || '(No Subject)'}</title>
+          <style>
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+              line-height: 1.6;
+              padding: 20px;
+              max-width: 800px;
+              margin: 0 auto;
+            }
+            h1 { font-size: 24px; margin-bottom: 20px; }
+            .meta { 
+              border-bottom: 2px solid #ddd; 
+              padding-bottom: 15px; 
+              margin-bottom: 20px;
+            }
+            .meta-row { margin: 5px 0; }
+            .label { font-weight: bold; }
+            .content { margin-top: 20px; }
+            @media print {
+              body { padding: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <h1>${email.subject || '(No Subject)'}</h1>
+          <div class="meta">
+            <div class="meta-row"><span class="label">From:</span> ${fromName}</div>
+            <div class="meta-row"><span class="label">To:</span> ${toList}</div>
+            ${email.cc && email.cc.length > 0 ? `<div class="meta-row"><span class="label">Cc:</span> ${email.cc.map(c => c.name || c.address).join(', ')}</div>` : ''}
+            <div class="meta-row"><span class="label">Date:</span> ${emailDate}</div>
+          </div>
+          <div class="content">
+            ${email.htmlBody || email.textBody?.replace(/\n/g, '<br>') || '(No content)'}
+          </div>
+        </body>
+      </html>
+    `);
+    
+    printWindow.document.close();
+    printWindow.focus();
+    
+    // Give time for content to load before printing
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 250);
+  };
+
+  const fromAddress = email?.from[0];
+  
+  // Block external images if setting enabled
+  const processedHtml = React.useMemo(() => {
+    if (!email?.htmlBody) return null;
+    
+    let html = email.htmlBody;
+    
+    // If blockExternalImages is enabled, remove or placeholder external images
+    if (settings?.privacy.blockExternalImages) {
+      // Replace img tags with external sources with a placeholder
+      html = html.replace(
+        /<img([^>]*?)src=["'](?:https?:\/\/|\/\/|data:)([^"']+)["']([^>]*?)>/gi,
+        (match, _before, src) => {
+          // Keep data: URIs (embedded images)
+          if (src.startsWith('data:')) {
+            return match;
+          }
+          // Block external images
+          return `<div style="padding: 10px; background-color: #333; color: #888; border: 1px solid #555; margin: 5px 0; font-size: 12px;">[External image blocked]</div>`;
+        }
+      );
+    }
+    
+    return DOMPurify.sanitize(html);
+  }, [email?.htmlBody, settings?.privacy.blockExternalImages]);
+
+  // Determine if we should apply theme to email viewer
+  const shouldApplyTheme = settings?.display.applyThemeToEmailViewer !== false;
+  const emailBodyColor = shouldApplyTheme ? theme.palette.text.primary : '#333';
+  const emailBgColor = shouldApplyTheme ? theme.palette.background.paper : '#fff';
+
   if (!emailId) {
     return (
       <Box
@@ -276,11 +379,6 @@ export const EmailViewer: React.FC<EmailViewerProps> = ({
     );
   }
 
-  const fromAddress = email.from[0];
-  const sanitizedHtml = email.htmlBody
-    ? DOMPurify.sanitize(email.htmlBody)
-    : null;
-
   return (
     <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
       {/* Header */}
@@ -308,7 +406,7 @@ export const EmailViewer: React.FC<EmailViewerProps> = ({
         </IconButton>
 
         {/* Show Edit Draft button if this is a draft */}
-        {email.flags?.includes('\\Draft') ? (
+        {email.flags?.includes("\\Draft") ? (
           <IconButton onClick={onEditDraft} color="primary">
             <EditIcon />
           </IconButton>
@@ -323,6 +421,14 @@ export const EmailViewer: React.FC<EmailViewerProps> = ({
             </IconButton>
           </>
         )}
+
+        <IconButton onClick={handlePrint} title="Print">
+          <PrintIcon />
+        </IconButton>
+
+        <IconButton onClick={() => setMoveFolderDialogOpen(true)} title="Move to folder">
+          <DriveFileMoveIcon />
+        </IconButton>
 
         <IconButton onClick={handleDelete}>
           <DeleteIcon />
@@ -464,15 +570,13 @@ export const EmailViewer: React.FC<EmailViewerProps> = ({
                 variant="subtitle2"
                 color="text.secondary"
                 sx={{ mb: 2 }}
-              >
-                Date
-              </Typography>
-              <Typography variant="body2">
-                {email.date && format(new Date(email.date), "PPpp")}
-              </Typography>
-            </Paper>
-
-            {/* Attachments */}
+            >
+              Date
+            </Typography>
+            <Typography variant="body2">
+              {email.date && formatEmailViewerDateTime(email.date, settings)}
+            </Typography>
+          </Paper>            {/* Attachments */}
             {email.hasAttachments && email.attachments && (
               <Paper
                 elevation={0}
@@ -523,10 +627,26 @@ export const EmailViewer: React.FC<EmailViewerProps> = ({
                 height: "100%",
               }}
             >
-              {sanitizedHtml ? (
+              {processedHtml ? (
                 <iframe
-                  srcDoc={sanitizedHtml}
-                  sandbox="allow-same-origin"
+                  srcDoc={`
+                    <style>
+                      body {
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI',
+                          Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans',
+                          'Helvetica Neue', sans-serif;
+                        padding: 20px;
+                        color: ${emailBodyColor};
+                        background-color: ${emailBgColor};
+                      }
+                      img {
+                        max-width: 100%;
+                        height: auto;
+                      }
+                    </style>
+                    <base target="_blank" />
+                    ${processedHtml}`}
+                  sandbox="allow-top-navigation-by-user-activation allow-popups-to-escape-sandbox allow-popups"
                   style={{
                     width: "100%",
                     height: "100%",
@@ -558,6 +678,21 @@ export const EmailViewer: React.FC<EmailViewerProps> = ({
           attachmentIndex={selectedImage.index}
           filename={selectedImage.filename}
           contentType={selectedImage.contentType}
+        />
+      )}
+
+      {/* Move Folder Dialog */}
+      {email && (
+        <MoveFolderDialog
+          open={moveFolderDialogOpen}
+          onClose={() => setMoveFolderDialogOpen(false)}
+          emailId={email.id}
+          currentFolderId={email.folderId}
+          accountId={email.emailAccountId}
+          onSuccess={() => {
+            // Refresh the email list or navigate back
+            onClose();
+          }}
         />
       )}
     </Box>

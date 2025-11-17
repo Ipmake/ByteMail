@@ -411,7 +411,7 @@ export const FolderList: React.FC<FolderListProps> = ({
             value={newFolderName}
             onChange={(e) => setNewFolderName(e.target.value)}
             disabled={isWorking}
-            onKeyPress={(e) => {
+            onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 handleRenameFolder();
               }

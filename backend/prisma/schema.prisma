@@ -19,8 +19,20 @@ model User {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   emailAccounts EmailAccount[]
+  settings      UserSettings?
 
   @@map("users")
+}
+
+model UserSettings {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  settings  Json     // Stores all settings as JSON
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user_settings")
 }
 
 model ServerSettings {

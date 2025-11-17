@@ -507,6 +507,24 @@ export class ImapService {
     await this.connection.delBox(folderPath);
   }
 
+  async moveEmail(sourceFolderPath: string, uid: number, destinationFolderPath: string): Promise<void> {
+    if (!this.connection) {
+      await this.connect();
+    }
+
+    // Open source folder
+    await this.connection.openBox(sourceFolderPath);
+
+    // Copy the email to destination folder
+    await this.connection.copy([uid], destinationFolderPath);
+
+    // Mark the original email as deleted
+    await this.connection.addFlags([uid], ['\\Deleted']);
+
+    // Expunge to permanently remove the deleted email
+    await this.connection.expunge();
+  }
+
   async appendToFolder(folderPath: string, message: string, flags: string[] = []): Promise<void> {
     if (!this.connection) {
       await this.connect();

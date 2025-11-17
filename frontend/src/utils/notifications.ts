@@ -58,6 +58,36 @@ export const showEmailNotification = (options: EmailNotificationOptions): void =
   }, 5000);
 };
 
+// Play notification sound - smooth, modern single beep
+export const playNotificationSound = (): void => {
+  try {
+    // Create a simple notification beep using Web Audio API
+    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const audioContext = new AudioContextClass();
+    
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    // Use a pleasant frequency - E5 note
+    oscillator.frequency.value = 659;
+    oscillator.type = 'sine';
+    
+    // Smooth envelope with gentle attack and decay
+    const startTime = audioContext.currentTime;
+    gainNode.gain.setValueAtTime(0, startTime);
+    gainNode.gain.linearRampToValueAtTime(0.35, startTime + 0.02); // Gentle attack, louder volume
+    gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + 0.3); // Smooth decay
+    
+    oscillator.start(startTime);
+    oscillator.stop(startTime + 0.3);
+  } catch (error) {
+    console.error('Failed to play notification sound:', error);
+  }
+};
+
 // Show notification for new email
 export const showNewEmailNotification = (
   from: string,

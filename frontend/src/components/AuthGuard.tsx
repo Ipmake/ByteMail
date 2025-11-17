@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { useAuthStore } from '../stores/authStore';
+import { useSettingsStore } from '../stores/settingsStore';
 import { LoginPage } from '../pages/LoginPage';
 import { Box, CircularProgress } from '@mui/material';
 
@@ -8,14 +9,21 @@ interface AuthGuardProps {
 }
 
 export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
-  const { isAuthenticated, isLoading, token, refreshUser } = useAuthStore();
+  const { isAuthenticated, isLoading, initializeAuth } = useAuthStore();
+  const { loadSettings } = useSettingsStore();
 
   useEffect(() => {
-    // If we have a token but no user data loaded yet, refresh user
-    if (token && !isLoading) {
-      refreshUser();
+    // Initialize auth state from localStorage on mount
+    // This will automatically fetch user data if token exists
+    initializeAuth();
+  }, [initializeAuth]);
+
+  useEffect(() => {
+    // Load user settings once authenticated
+    if (isAuthenticated) {
+      loadSettings();
     }
-  }, [token, isLoading, refreshUser]);
+  }, [isAuthenticated, loadSettings]);
 
   // Show loading spinner while checking auth
   if (isLoading) {

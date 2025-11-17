@@ -1,10 +1,8 @@
 import React, { useState } from "react";
 import {
-  ListItemButton,
   Box,
   Typography,
   Checkbox,
-  Avatar,
   CircularProgress,
   Toolbar,
   IconButton,
@@ -16,17 +14,26 @@ import {
   DialogContentText,
   DialogActions,
   Button,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  Divider,
 } from "@mui/material";
-import AttachFileIcon from "@mui/icons-material/AttachFile";
 import StarIcon from "@mui/icons-material/Star";
 import StarBorderIcon from "@mui/icons-material/StarBorder";
 import DeleteIcon from "@mui/icons-material/Delete";
 import MarkEmailReadIcon from "@mui/icons-material/MarkEmailRead";
 import MarkEmailUnreadIcon from "@mui/icons-material/MarkEmailUnread";
 import CloseIcon from "@mui/icons-material/Close";
+import PrintIcon from "@mui/icons-material/Print";
+import DriveFileMoveIcon from "@mui/icons-material/DriveFileMove";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import { Virtuoso } from "react-virtuoso";
-import { format } from "date-fns";
 import type { Email } from "../types";
+import { useSettingsStore } from "../stores/settingsStore";
+import { formatEmailViewerDateTime } from "../utils/dateFormatting";
+import { MoveFolderDialog } from "./MoveFolderDialog";
+import { EmailListItem } from "./EmailListItem";
 
 interface EmailListProps {
   emails: Email[];
@@ -38,26 +45,6 @@ interface EmailListProps {
   onBulkStar?: (emailIds: string[], isFlagged: boolean) => void;
   isLoading?: boolean;
 }
-
-const getInitials = (email: string) => {
-  return email.charAt(0).toUpperCase();
-};
-
-const formatDate = (dateString?: string) => {
-  if (!dateString) return "";
-  const date = new Date(dateString);
-  const now = new Date();
-  const diff = now.getTime() - date.getTime();
-  const days = diff / (1000 * 60 * 60 * 24);
-
-  if (days < 1) {
-    return format(date, "HH:mm");
-  } else if (days < 7) {
-    return format(date, "EEE");
-  } else {
-    return format(date, "MMM d");
-  }
-};
 
 export const EmailList: React.FC<EmailListProps> = ({
   emails,
@@ -71,6 +58,14 @@ export const EmailList: React.FC<EmailListProps> = ({
 }) => {
   const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set());
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [moveFolderDialogOpen, setMoveFolderDialogOpen] = useState(false);
+  const [emailToMove, setEmailToMove] = useState<Email | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    mouseX: number;
+    mouseY: number;
+    email: Email;
+  } | null>(null);
+  const { settings } = useSettingsStore();
 
   const handleToggleSelect = (emailId: string) => {
     setSelectedEmails((prev) => {
@@ -124,6 +119,70 @@ export const EmailList: React.FC<EmailListProps> = ({
       onBulkStar(Array.from(selectedEmails), isFlagged);
       setSelectedEmails(new Set());
     }
+  };
+
+  const handlePrintEmail = (email: Email) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    
+    const emailDate = email.date ? formatEmailViewerDateTime(email.date, settings) : 'Unknown date';
+    const fromName = email.from[0]?.name || email.from[0]?.address || 'Unknown';
+    const toList = email.to?.map(t => t.name || t.address).join(', ') || 'Unknown';
+    
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Print: ${email.subject || '(No Subject)'}</title>
+          <style>
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+              line-height: 1.6;
+              padding: 20px;
+              max-width: 800px;
+              margin: 0 auto;
+            }
+            h1 { font-size: 24px; margin-bottom: 20px; }
+            .meta { 
+              border-bottom: 2px solid #ddd; 
+              padding-bottom: 15px; 
+              margin-bottom: 20px;
+            }
+            .meta-row { margin: 5px 0; }
+            .label { font-weight: bold; }
+            .content { margin-top: 20px; }
+            @media print {
+              body { padding: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <h1>${email.subject || '(No Subject)'}</h1>
+          <div class="meta">
+            <div class="meta-row"><span class="label">From:</span> ${fromName}</div>
+            <div class="meta-row"><span class="label">To:</span> ${toList}</div>
+            ${email.cc && email.cc.length > 0 ? `<div class="meta-row"><span class="label">Cc:</span> ${email.cc.map(c => c.name || c.address).join(', ')}</div>` : ''}
+            <div class="meta-row"><span class="label">Date:</span> ${emailDate}</div>
+          </div>
+          <div class="content">
+            ${email.htmlBody || email.textBody?.replace(/\n/g, '<br>') || '(No content)'}
+          </div>
+        </body>
+      </html>
+    `);
+    
+    printWindow.document.close();
+    printWindow.focus();
+    
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 250);
+  };
+
+  const handleMoveEmail = (email: Email) => {
+    setEmailToMove(email);
+    setMoveFolderDialogOpen(true);
   };
 
   if (isLoading) {
@@ -265,160 +324,114 @@ export const EmailList: React.FC<EmailListProps> = ({
       <Virtuoso
         style={{ flex: 1 }}
         data={emails}
-        itemContent={(_index, email) => {
-          const fromAddress = email.from[0];
-          const fromName =
-            fromAddress?.name || fromAddress?.address || "Unknown";
-
-          return (
-            <ListItemButton
-              key={email.id}
-              selected={selectedEmail === email.id}
-              onClick={() => onSelectEmail(email.id)}
-              sx={{
-                borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
-                py: 2,
-                px: 3,
-                backgroundColor: email.isRead
-                  ? "transparent"
-                  : "rgba(160, 160, 160, 0.05)",
-                "&:hover": {
-                  backgroundColor: "rgba(160, 160, 160, 0.1)",
-                },
-                "&.Mui-selected": {
-                  backgroundColor: "rgba(160, 160, 160, 0.15)",
-                  "&:hover": {
-                    backgroundColor: "rgba(160, 160, 160, 0.2)",
-                  },
-                },
-              }}
-            >
-              <Box
-                sx={{
-                  display: "flex",
-                  gap: 2,
-                  width: "100%",
-                  alignItems: "center",
-                }}
-              >
-                <Box
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleToggleSelect(email.id);
-                  }}
-                  sx={{ display: "flex", alignItems: "center" }}
-                >
-                  <Checkbox
-                    sx={{ p: 0 }}
-                    checked={selectedEmails.has(email.id)}
-                  />
-                </Box>
-
-                <Box
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggleStar(email.id, !email.isFlagged);
-                  }}
-                  sx={{
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                  }}
-                >
-                  {email.isFlagged ? (
-                    <StarIcon fontSize="small" sx={{ color: "warning.main" }} />
-                  ) : (
-                    <StarBorderIcon
-                      fontSize="small"
-                      sx={{ color: "text.disabled" }}
-                    />
-                  )}
-                </Box>
-
-                <Avatar
-                  sx={{
-                    width: 44,
-                    height: 44,
-                    bgcolor: "primary.main",
-                    fontSize: "1rem",
-                    fontWeight: 600,
-                  }}
-                >
-                  {getInitials(fromName)}
-                </Avatar>
-
-                <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Box
-                    sx={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 1,
-                      mb: 0.5,
-                    }}
-                  >
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        fontWeight: email.isRead ? 400 : 600,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        fontSize: "0.9375rem",
-                      }}
-                    >
-                      {fromName}
-                    </Typography>
-                    {email.hasAttachments && (
-                      <AttachFileIcon
-                        fontSize="small"
-                        sx={{ color: "text.secondary", fontSize: 16 }}
-                      />
-                    )}
-                  </Box>
-
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      fontWeight: email.isRead ? 400 : 600,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      mb: 0.5,
-                      fontSize: "0.9375rem",
-                    }}
-                  >
-                    {email.subject || "(No Subject)"}
-                  </Typography>
-
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      display: "block",
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    {email.textBody?.substring(0, 100)}
-                  </Typography>
-                </Box>
-
-                <Box sx={{ textAlign: "right", minWidth: 70 }}>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ fontWeight: 500 }}
-                  >
-                    {formatDate(email.date)}
-                  </Typography>
-                </Box>
-              </Box>
-            </ListItemButton>
-          );
-        }}
+        computeItemKey={(_index, email) => email.id}
+        itemContent={(_index, email) => (
+          <EmailListItem
+            key={email.id}
+            initialEmail={email}
+            isSelected={selectedEmail === email.id}
+            isChecked={selectedEmails.has(email.id)}
+            onSelect={onSelectEmail}
+            onToggleCheck={handleToggleSelect}
+          />
+        )}
       />
+
+      {/* Context Menu */}
+      <Menu
+        open={contextMenu !== null}
+        onClose={() => setContextMenu(null)}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          contextMenu !== null
+            ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
+            : undefined
+        }
+      >
+        <MenuItem onClick={() => {
+          if (contextMenu) {
+            onSelectEmail(contextMenu.email.id);
+            setContextMenu(null);
+          }
+        }}>
+          <ListItemIcon>
+            <OpenInNewIcon fontSize="small" />
+          </ListItemIcon>
+          Open
+        </MenuItem>
+        
+        <MenuItem onClick={() => {
+          if (contextMenu && onBulkMarkRead) {
+            onBulkMarkRead([contextMenu.email.id], !contextMenu.email.isRead);
+            setContextMenu(null);
+          }
+        }}>
+          <ListItemIcon>
+            {contextMenu?.email.isRead ? (
+              <MarkEmailUnreadIcon fontSize="small" />
+            ) : (
+              <MarkEmailReadIcon fontSize="small" />
+            )}
+          </ListItemIcon>
+          Mark as {contextMenu?.email.isRead ? 'Unread' : 'Read'}
+        </MenuItem>
+        
+        <MenuItem onClick={() => {
+          if (contextMenu) {
+            onToggleStar(contextMenu.email.id, !contextMenu.email.isFlagged);
+            setContextMenu(null);
+          }
+        }}>
+          <ListItemIcon>
+            {contextMenu?.email.isFlagged ? (
+              <StarBorderIcon fontSize="small" />
+            ) : (
+              <StarIcon fontSize="small" />
+            )}
+          </ListItemIcon>
+          {contextMenu?.email.isFlagged ? 'Unstar' : 'Star'}
+        </MenuItem>
+        
+        <Divider />
+        
+        <MenuItem onClick={() => {
+          if (contextMenu) {
+            handleMoveEmail(contextMenu.email);
+            setContextMenu(null);
+          }
+        }}>
+          <ListItemIcon>
+            <DriveFileMoveIcon fontSize="small" />
+          </ListItemIcon>
+          Move to Folder...
+        </MenuItem>
+        
+        <MenuItem onClick={() => {
+          if (contextMenu) {
+            handlePrintEmail(contextMenu.email);
+            setContextMenu(null);
+          }
+        }}>
+          <ListItemIcon>
+            <PrintIcon fontSize="small" />
+          </ListItemIcon>
+          Print
+        </MenuItem>
+        
+        <Divider />
+        
+        <MenuItem onClick={() => {
+          if (contextMenu && onBulkDelete) {
+            onBulkDelete([contextMenu.email.id]);
+            setContextMenu(null);
+          }
+        }}>
+          <ListItemIcon>
+            <DeleteIcon fontSize="small" />
+          </ListItemIcon>
+          Delete
+        </MenuItem>
+      </Menu>
 
       {/* Delete Confirmation Dialog */}
       <Dialog
@@ -445,6 +458,24 @@ export const EmailList: React.FC<EmailListProps> = ({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Move Folder Dialog */}
+      {emailToMove && (
+        <MoveFolderDialog
+          open={moveFolderDialogOpen}
+          onClose={() => {
+            setMoveFolderDialogOpen(false);
+            setEmailToMove(null);
+          }}
+          emailId={emailToMove.id}
+          currentFolderId={emailToMove.folderId}
+          accountId={emailToMove.emailAccountId}
+          onSuccess={() => {
+            // Optionally refresh the email list
+            window.location.reload();
+          }}
+        />
+      )}
     </Box>
   );
 };

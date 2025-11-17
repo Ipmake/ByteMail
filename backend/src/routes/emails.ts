@@ -84,6 +84,8 @@ router.get('/folders/:folderId/emails', async (req: AuthRequest, res: Response) 
         where,
         select: {
           id: true,
+          emailAccountId: true,
+          folderId: true,
           messageId: true,
           subject: true,
           from: true,
@@ -93,6 +95,7 @@ router.get('/folders/:folderId/emails', async (req: AuthRequest, res: Response) 
           isFlagged: true,
           hasAttachments: true,
           size: true,
+          textBody: true,
         },
         orderBy: { date: 'desc' },
         skip,
@@ -271,6 +274,92 @@ router.patch('/:id/flag', async (req: AuthRequest, res: Response) => {
     res.json({ message: 'Email updated' });
   } catch (error) {
     console.error('Mark email flagged error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Move email to another folder
+router.patch('/:id/move', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { folderId } = req.body;
+
+    if (!folderId) {
+      return res.status(400).json({ error: 'Folder ID is required' });
+    }
+
+    // Verify email belongs to user and get current folder
+    const email = await prisma.email.findFirst({
+      where: {
+        id,
+        emailAccount: {
+          userId: req.userId,
+        },
+      },
+      include: {
+        emailAccount: true,
+        folder: true,
+      },
+    });
+
+    if (!email) {
+      return res.status(404).json({ error: 'Email not found' });
+    }
+
+    // Verify destination folder belongs to the same account
+    const destinationFolder = await prisma.folder.findFirst({
+      where: {
+        id: folderId,
+        emailAccountId: email.emailAccountId,
+      },
+    });
+
+    if (!destinationFolder) {
+      return res.status(404).json({ error: 'Destination folder not found' });
+    }
+
+    // Don't move if already in the destination folder
+    if (email.folderId === folderId) {
+      return res.status(400).json({ error: 'Email is already in this folder' });
+    }
+
+    const oldFolderId = email.folderId;
+
+    // Try to move the email on the IMAP server
+    try {
+      const imapService = new ImapService({
+        host: email.emailAccount.imapHost,
+        port: email.emailAccount.imapPort,
+        secure: email.emailAccount.imapSecure,
+        username: email.emailAccount.username,
+        password: decrypt(email.emailAccount.password),
+      });
+
+      await imapService.connect();
+      
+      // Move the email on the server
+      await imapService.moveEmail(email.folder.path, email.uid, destinationFolder.path);
+      
+      await imapService.disconnect();
+    } catch (imapError) {
+      console.error('IMAP move error:', imapError);
+      // Continue with local move even if IMAP fails
+      // The next sync will reconcile the state
+    }
+
+    // Update the email in the database
+    await prisma.email.update({
+      where: { id },
+      data: { folderId },
+    });
+
+    // Recalculate folder counts for both folders
+    await recalculateFolderCounts(oldFolderId);
+    await recalculateFolderCounts(folderId);
+
+    res.json({ message: 'Email moved successfully' });
+  } catch (error) {
+    console.error('Move email error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

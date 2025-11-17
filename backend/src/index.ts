@@ -8,6 +8,7 @@ import authRoutes from './routes/auth';
 import adminRoutes from './routes/admin';
 import emailAccountRoutes from './routes/emailAccounts';
 import emailRoutes from './routes/emails';
+import settingsRoutes from './routes/settings';
 import prisma from './db';
 import bcrypt from 'bcryptjs';
 
@@ -36,6 +37,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/email-accounts', emailAccountRoutes);
 app.use('/api/emails', emailRoutes);
+app.use('/api/settings', settingsRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

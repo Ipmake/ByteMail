@@ -29,9 +29,12 @@ import { useNavigate } from 'react-router-dom';
 import { emailAccountsApi } from '../api';
 import { AddAccountDialog } from '../components/AddAccountDialog';
 import type { EmailAccount } from '../types';
+import { useSettingsStore } from '../stores/settingsStore';
+import { formatDateTimeWithSettings } from '../utils/dateFormatting';
 
 export const AccountsPage: React.FC = () => {
   const navigate = useNavigate();
+  const { settings } = useSettingsStore();
   const [accounts, setAccounts] = useState<EmailAccount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -70,7 +73,7 @@ export const AccountsPage: React.FC = () => {
   const handleAddSuccess = () => {
     loadAccounts();
     // Navigate back to mail after adding account
-    navigate('/mail');
+    navigate('/');
   };
 
   const handleDelete = async (id: string) => {
@@ -214,7 +217,7 @@ export const AccountsPage: React.FC = () => {
                   </TableCell>
                   <TableCell>
                     {account.lastSyncAt
-                      ? new Date(account.lastSyncAt).toLocaleString()
+                      ? formatDateTimeWithSettings(account.lastSyncAt, settings)
                       : 'Never'}
                   </TableCell>
                   <TableCell align="right">

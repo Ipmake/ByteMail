@@ -13,11 +13,8 @@ function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Navigate to="/mail" replace />} />
-            <Route path="/mail/*" element={<DashboardPage />} />
-            <Route path="/compose/*" element={<DashboardPage />} />
-            <Route path="/accounts" element={<DashboardPage />} />
+            <Route path="/*" element={<DashboardPage />} />
             <Route path="/admin" element={<AdminPage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>
       </AuthGuard>

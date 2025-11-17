@@ -32,9 +32,11 @@ import LightbulbIcon from '@mui/icons-material/Lightbulb';
 import CloseIcon from '@mui/icons-material/Close';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SaveIcon from '@mui/icons-material/Save';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { emailAccountsApi, emailsApi } from '../api';
 import type { EmailAccount, Email, Folder } from '../types';
+import { useSettingsStore } from '../stores/settingsStore';
+import { formatDateTimeWithSettings } from '../utils/dateFormatting';
 
 // Helper function to find inbox folder reliably
 const findInboxFolder = (folders: Folder[]): Folder | undefined => {
@@ -64,9 +66,27 @@ interface ComposePageProps {
   emailId?: string;
 }
 
-export const ComposePage: React.FC<ComposePageProps> = ({ mode = 'compose', emailId }) => {
+export const ComposePage: React.FC<ComposePageProps> = ({ mode: modeProp, emailId: emailIdProp }) => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const params = useParams<{ emailId?: string }>();
   const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const signatureAddedRef = useRef(false);
+
+  // Determine mode from location pathname if not provided as prop
+  let mode: 'compose' | 'reply' | 'forward' | 'draft' = modeProp || 'compose';
+  if (!modeProp) {
+    if (location.pathname.includes('/reply')) {
+      mode = 'reply';
+    } else if (location.pathname.includes('/forward')) {
+      mode = 'forward';
+    } else if (location.pathname.includes('/draft')) {
+      mode = 'draft';
+    }
+  }
+
+  // Use emailId from params if available, otherwise use prop
+  const emailId = params.emailId || emailIdProp;
 
   const [accounts, setAccounts] = useState<EmailAccount[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState('');
@@ -101,6 +121,9 @@ export const ComposePage: React.FC<ComposePageProps> = ({ mode = 'compose', emai
   const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false);
   const [newTemplateName, setNewTemplateName] = useState('');
 
+  // Get settings from store
+  const { settings } = useSettingsStore();
+
   // Define all callback functions before useEffect hooks
   const loadAccounts = useCallback(async () => {
     try {
@@ -126,33 +149,29 @@ export const ComposePage: React.FC<ComposePageProps> = ({ mode = 'compose', emai
         setSelectedAccountId(email.emailAccountId);
       }
       
-      if (mode === 'reply') {
-        // Set To field to original sender
-        const sender = email.from && email.from[0] ? email.from[0].address : '';
-        setTo(sender ? [sender] : []);
+      const emailSubject = email.subject || '';
+      const originalContent = email.textBody || email.htmlBody || '(No content)';
+      const formattedDate = formatDateTimeWithSettings(email.date || new Date(), settings);
+      const sender = email.from && email.from[0] ? email.from[0].address : '';
+      
+      switch (mode) {
+        case 'reply':
+          setTo(sender ? [sender] : []);
+          setSubject(emailSubject.startsWith('Re:') ? emailSubject : `Re: ${emailSubject}`);
+          setBody(`\n\n${useSettingsStore.getState().settings?.email.signature}\n\n\nOn ${formattedDate}, ${sender} wrote:\n${originalContent}`);
+          break;
         
-        const emailSubject = email.subject || '';
-        setSubject(emailSubject.startsWith('Re:') ? emailSubject : `Re: ${emailSubject}`);
-        
-        const originalContent = email.textBody || email.htmlBody || '(No content)';
-        const formattedDate = new Date(email.date || new Date()).toLocaleString();
-        
-        setBody(`\n\n\nOn ${formattedDate}, ${sender} wrote:\n${originalContent}`);
-      } else if (mode === 'forward') {
-        const emailSubject = email.subject || '';
-        setSubject(emailSubject.startsWith('Fwd:') ? emailSubject : `Fwd: ${emailSubject}`);
-        
-        const originalContent = email.textBody || email.htmlBody || '(No content)';
-        const formattedDate = new Date(email.date || new Date()).toLocaleString();
-        
-        setBody(`\n\n\n--- Forwarded Message ---\nFrom: ${email.from[0]?.address || ''}\nDate: ${formattedDate}\nSubject: ${emailSubject}\n\n${originalContent}`);
+        case 'forward':
+          setSubject(emailSubject.startsWith('Fwd:') ? emailSubject : `Fwd: ${emailSubject}`);
+          setBody(`\n\n${useSettingsStore.getState().settings?.email.signature}\n\n\n--- Forwarded Message ---\nFrom: ${sender}\nDate: ${formattedDate}\nSubject: ${emailSubject}\n\n${originalContent}`);
+          break;
       }
     } catch (error) {
       console.error('Failed to load original email:', error);
     } finally {
       setIsLoading(false);
     }
-  }, [mode]);
+  }, [mode, settings]);
 
   const loadDraft = useCallback(async (id: string) => {
     try {
@@ -263,13 +282,23 @@ export const ComposePage: React.FC<ComposePageProps> = ({ mode = 'compose', emai
     if (!selectedAccountId) return; // Wait for account to be selected
     if (mode === 'draft' && !currentDraftId) return; // Don't auto-save until draft is loaded
     
+    // Check if user has actually started composing (not just auto-signature)
+    const hasRecipients = to.length > 0 || cc.length > 0 || bcc.length > 0;
+    const hasSubject = subject.trim().length > 0;
+    const signature = settings?.email.signature || '';
+    const bodyWithoutSignature = body.replace(signature, '').trim();
+    const hasBodyContent = bodyWithoutSignature.length > 0;
+    
+    // Only auto-save if user has added meaningful content
+    const shouldSave = hasRecipients || hasSubject || hasBodyContent;
+    
     const timer = setTimeout(() => {
-      if (body || subject || to.length > 0) {
+      if (shouldSave) {
         saveDraft();
       }
     }, 3000);
     return () => clearTimeout(timer);
-  }, [body, subject, to, cc, bcc, selectedAccountId, currentDraftId, mode, saveDraft]);
+  }, [body, subject, to, cc, bcc, selectedAccountId, currentDraftId, mode, settings?.email.signature, saveDraft]);
 
   // Calculate stats
   useEffect(() => {
@@ -284,6 +313,14 @@ export const ComposePage: React.FC<ComposePageProps> = ({ mode = 'compose', emai
       loadTemplates();
     }
   }, [selectedAccountId, loadTemplates]);
+
+  // Auto-add signature for new compose emails
+  useEffect(() => {
+    if (mode === 'compose' && settings?.email.signature && !signatureAddedRef.current && !body) {
+      setBody(`\n\n${settings.email.signature}`);
+      signatureAddedRef.current = true;
+    }
+  }, [mode, settings?.email.signature, body]);
 
   const handleSend = async () => {
     if (!selectedAccountId || to.length === 0 || !subject) {
