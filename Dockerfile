@@ -1,5 +1,5 @@
 # Backend Dockerfile
-FROM node:22-alpine AS backend-builder
+FROM node:24-bullseye-slim AS backend-builder
 
 WORKDIR /app
 
@@ -15,7 +15,7 @@ RUN npx prisma generate
 RUN npm run build
 
 # Frontend Dockerfile stage
-FROM node:22-alpine AS frontend-builder
+FROM node:24-bullseye-slim AS frontend-builder
 
 WORKDIR /app
 
@@ -30,9 +30,11 @@ COPY frontend/ ./
 RUN npm run build
 
 # Final production image
-FROM node:22-alpine
+FROM node:24-bullseye-slim
 
 WORKDIR /app
+
+RUN apt-get update && apt-get install -y libc6-dev openssl
 
 # Copy backend dependencies and build
 COPY --from=backend-builder /app/node_modules ./node_modules
