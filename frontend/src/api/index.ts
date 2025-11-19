@@ -14,6 +14,7 @@ import type {
   CreateUserData,
   UpdateUserData,
 } from '../types';
+import { useSocketStore } from '../stores/socketStore';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -33,6 +34,12 @@ api.interceptors.request.use((config) => {
   }
   return config;
 });
+
+// Helper to get socketId from socket store
+const getSocketId = (): string | null => {
+  const socket = useSocketStore.getState().socket;
+  return socket?.id || null;
+};
 
 // Auth API
 export const authApi = {
@@ -76,64 +83,137 @@ export const emailAccountsApi = {
   delete: async (id: string): Promise<void> => {
     await api.delete(`/email-accounts/${id}`);
   },
-
-  sync: async (id: string): Promise<void> => {
-    await api.post(`/email-accounts/${id}/sync`);
-  },
 };
 
 // Emails API
 export const emailsApi = {
-  getFolders: async (accountId: string): Promise<Folder[]> => {
-    const { data } = await api.get<Folder[]>(`/emails/accounts/${accountId}/folders`);
+  getFolders: async (accountId: string, socketId?: string): Promise<Folder[]> => {
+    const sid = socketId || getSocketId();
+    const { data } = await api.get<Folder[]>(`/emails/accounts/${accountId}/folders`, {
+      params: { socketId: sid }
+    });
     return data;
   },
 
-  createFolder: async (accountId: string, name: string): Promise<Folder> => {
-    const { data } = await api.post<Folder>(`/emails/accounts/${accountId}/folders`, { name });
+  createFolder: async (accountId: string, name: string, socketId?: string): Promise<Folder> => {
+    const sid = socketId || getSocketId();
+    const { data } = await api.post<Folder>(`/emails/accounts/${accountId}/folders`, { 
+      name,
+      socketId: sid 
+    });
     return data;
   },
 
-  renameFolder: async (folderId: string, newName: string): Promise<void> => {
-    await api.patch(`/emails/folders/${folderId}/rename`, { newName });
+  renameFolder: async (folderId: string, newName: string, socketId?: string): Promise<void> => {
+    const sid = socketId || getSocketId();
+    await api.patch(`/emails/folders/${folderId}/rename`, { 
+      newName,
+      socketId: sid 
+    });
   },
 
-  deleteFolder: async (folderId: string): Promise<void> => {
-    await api.delete(`/emails/folders/${folderId}`);
+  deleteFolder: async (folderId: string, socketId?: string): Promise<void> => {
+    const sid = socketId || getSocketId();
+    await api.delete(`/emails/folders/${folderId}`, {
+      params: { socketId: sid }
+    });
   },
 
   getEmails: async (
     folderId: string,
     page = 1,
     limit = 50,
-    search?: string
+    search?: string,
+    socketId?: string
   ): Promise<EmailListResponse> => {
-    const params = new URLSearchParams({
-      page: page.toString(),
-      limit: limit.toString(),
-      ...(search && { search }),
-    });
+    const sid = socketId || getSocketId();
     const { data } = await api.get<EmailListResponse>(
-      `/emails/folders/${folderId}/emails?${params}`
+      `/emails/folders/${folderId}/emails`,
+      {
+        params: {
+          page,
+          limit,
+          ...(search && { search }),
+          ...(sid && { socketId: sid }),
+        }
+      }
     );
     return data;
   },
 
-  getById: async (id: string): Promise<Email> => {
-    const { data } = await api.get<Email>(`/emails/${id}`);
+  getById: async (id: string, socketId?: string): Promise<Email> => {
+    const sid = socketId || getSocketId();
+    const { data } = await api.get<Email>(`/emails/${id}`, {
+      params: { socketId: sid }
+    });
     return data;
   },
 
-  markAsRead: async (id: string, isRead: boolean): Promise<void> => {
-    await api.patch(`/emails/${id}/read`, { isRead });
+  getByUid: async (accountId: string, folderPath: string, uid: number, socketId?: string): Promise<Email> => {
+    const sid = socketId || getSocketId();
+    const { data } = await api.get<{ email: Email }>(
+      `/emails/${accountId}/${encodeURIComponent(folderPath)}/${uid}`,
+      {
+        params: { socketId: sid }
+      }
+    );
+    return data.email;
   },
 
-  markAsFlagged: async (id: string, isFlagged: boolean): Promise<void> => {
-    await api.patch(`/emails/${id}/flag`, { isFlagged });
+  markAsRead: async (id: string, isRead: boolean, socketId?: string): Promise<void> => {
+    const sid = socketId || getSocketId();
+    await api.patch(`/emails/${id}/read`, { 
+      isRead,
+      socketId: sid 
+    });
   },
 
-  moveEmail: async (id: string, folderId: string): Promise<void> => {
-    await api.patch(`/emails/${id}/move`, { folderId });
+  markAsReadByUid: async (accountId: string, folderPath: string, uid: number, isRead: boolean, socketId?: string): Promise<void> => {
+    const sid = socketId || getSocketId();
+    await api.put(
+      `/emails/${accountId}/${encodeURIComponent(folderPath)}/${uid}/read`,
+      { 
+        isRead,
+        socketId: sid 
+      }
+    );
+  },
+
+  markAsFlagged: async (id: string, isFlagged: boolean, socketId?: string): Promise<void> => {
+    const sid = socketId || getSocketId();
+    await api.patch(`/emails/${id}/flag`, { 
+      isFlagged,
+      socketId: sid 
+    });
+  },
+
+  markAsFlaggedByUid: async (accountId: string, folderPath: string, uid: number, isFlagged: boolean, socketId?: string): Promise<void> => {
+    const sid = socketId || getSocketId();
+    await api.put(
+      `/emails/${accountId}/${encodeURIComponent(folderPath)}/${uid}/flag`,
+      { 
+        isFlagged,
+        socketId: sid 
+      }
+    );
+  },
+
+  deleteByUid: async (accountId: string, folderPath: string, uid: number, socketId?: string): Promise<void> => {
+    const sid = socketId || getSocketId();
+    await api.delete(
+      `/emails/${accountId}/${encodeURIComponent(folderPath)}/${uid}`,
+      {
+        params: { socketId: sid }
+      }
+    );
+  },
+
+  moveEmail: async (id: string, folderId: string, socketId?: string): Promise<void> => {
+    const sid = socketId || getSocketId();
+    await api.patch(`/emails/${id}/move`, { 
+      folderId,
+      socketId: sid 
+    });
   },
 
   send: async (emailData: SendEmailData): Promise<void> => {

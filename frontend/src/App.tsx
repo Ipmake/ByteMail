@@ -1,8 +1,7 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, CssBaseline } from '@mui/material';
 import { theme } from './theme';
-import { DashboardPage } from './pages/DashboardPage';
-import { AdminPage } from './pages/AdminPage';
+import DashboardPage from './pages/DashboardPage';
 import { AuthGuard } from './components/AuthGuard';
 
 function App() {
@@ -12,9 +11,8 @@ function App() {
       <AuthGuard>
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Navigate to="/mail" replace />} />
+            {/* <Route path="/" element={<Navigate to="/mail" replace />} /> */}
             <Route path="/*" element={<DashboardPage />} />
-            <Route path="/admin" element={<AdminPage />} />
           </Routes>
         </BrowserRouter>
       </AuthGuard>

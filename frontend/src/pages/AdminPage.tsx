@@ -19,12 +19,8 @@ import {
   Switch,
   FormControlLabel,
   Chip,
-  Drawer,
-  List,
-  ListItemButton,
-  ListItemIcon,
-  ListItemText,
-  Divider,
+  Tabs,
+  Tab,
   Avatar,
   Card,
   CardContent,
@@ -32,27 +28,22 @@ import {
   Alert,
   Snackbar,
 } from '@mui/material';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import { useSettingsStore } from '../stores/settingsStore';
+import { formatDateWithSettings, formatDateTimeWithSettings } from '../utils/dateFormatting';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
-import PeopleIcon from '@mui/icons-material/People';
-import SettingsIcon from '@mui/icons-material/Settings';
 import EmailIcon from '@mui/icons-material/Email';
 import InfoIcon from '@mui/icons-material/Info';
-import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
-import { useNavigate } from 'react-router-dom';
 import { adminApi, emailAccountsApi } from '../api';
 import { ChangePasswordDialog } from '../components/ChangePasswordDialog';
 import type { UserWithCount, ServerSettings, User } from '../types';
 
-const drawerWidth = 240;
-
 export const AdminPage: React.FC = () => {
-  const navigate = useNavigate();
   const [currentView, setCurrentView] = useState<'users' | 'settings'>('users');
   const [users, setUsers] = useState<UserWithCount[]>([]);
   const [settings, setSettings] = useState<ServerSettings | null>(null);
+  const { settings: userSettings } = useSettingsStore();
   const [selectedUser, setSelectedUser] = useState<(User & { 
     emailAccounts?: Array<{ 
       id: string; 
@@ -152,6 +143,7 @@ export const AdminPage: React.FC = () => {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadUsers();
     loadSettings();
   }, [loadUsers, loadSettings]);
@@ -299,74 +291,46 @@ export const AdminPage: React.FC = () => {
     setOpenEditDialog(true);
   };
 
-  return (
-    <Box sx={{ display: 'flex', height: '100vh', bgcolor: 'background.default' }}>
-      {/* Sidebar */}
-      <Drawer
-        variant="permanent"
-        sx={{
-          width: drawerWidth,
-          flexShrink: 0,
-          '& .MuiDrawer-paper': {
-            width: drawerWidth,
-            boxSizing: 'border-box',
-            borderRight: 1,
-            borderColor: 'divider',
-          },
-        }}
-      >
-        <Box sx={{ p: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <AdminPanelSettingsIcon sx={{ fontSize: 32, color: 'primary.main' }} />
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>
-            Admin Panel
-          </Typography>
-        </Box>
-        <Divider />
-        <List sx={{ pt: 2, px: 1 }}>
-          <ListItemButton
-            selected={currentView === 'users'}
-            onClick={() => setCurrentView('users')}
-            sx={{ borderRadius: 1, mb: 0.5 }}
-          >
-            <ListItemIcon>
-              <PeopleIcon color={currentView === 'users' ? 'primary' : 'inherit'} />
-            </ListItemIcon>
-            <ListItemText primary="Users" />
-          </ListItemButton>
-          <ListItemButton
-            selected={currentView === 'settings'}
-            onClick={() => setCurrentView('settings')}
-            sx={{ borderRadius: 1, mb: 0.5 }}
-          >
-            <ListItemIcon>
-              <SettingsIcon color={currentView === 'settings' ? 'primary' : 'inherit'} />
-            </ListItemIcon>
-            <ListItemText primary="Server Settings" />
-          </ListItemButton>
-        </List>
-        <Box sx={{ flexGrow: 1 }} />
-        <Divider />
-        <Box sx={{ p: 2 }}>
-          <Button
-            fullWidth
-            variant="outlined"
-            startIcon={<ArrowBackIcon />}
-            onClick={() => navigate('/')}
-          >
-            Back to Mail
-          </Button>
-        </Box>
-      </Drawer>
+  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
+    setCurrentView(newValue === 0 ? 'users' : 'settings');
+  };
 
-      {/* Main Content */}
-      <Box component="main" sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {/* Users View */}
-        {currentView === 'users' && (
-          <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <Box sx={{ p: 4, borderBottom: 1, borderColor: 'divider' }}>
+  return (
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', width: '100%' }}>
+      <Box sx={{ p: 3, borderBottom: 1, borderColor: 'divider' }}>
+        <Typography variant="h4" fontWeight={600}>
+          Admin Panel
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+          Manage users and server settings
+        </Typography>
+      </Box>
+
+      <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
+        <Paper
+          elevation={0}
+          sx={{
+            minWidth: 240,
+          }}
+        >
+          <Tabs
+            orientation="vertical"
+            value={currentView === 'users' ? 0 : 1}
+            onChange={handleTabChange}
+          >
+            <Tab label="Users" />
+            <Tab label="Server Settings" />
+          </Tabs>
+        </Paper>
+
+        <Box sx={{ flex: 1, overflow: 'auto' }}>
+          {/* Users View */}
+          {currentView === 'users' && (
+          <Box sx={{ p: 3 }}>
+            <Box sx={{ mb: 3 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Box>
-                  <Typography variant="h4" sx={{ fontWeight: 700, mb: 0.5 }}>
+                  <Typography variant="h5" sx={{ fontWeight: 600, mb: 0.5 }}>
                     User Management
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -384,18 +348,17 @@ export const AdminPage: React.FC = () => {
               </Box>
             </Box>
 
-            <Box sx={{ flex: 1, overflow: 'auto', p: 4 }}>
-              <TableContainer component={Paper} elevation={0}>
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell sx={{ fontWeight: 700 }}>User</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Role</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Email Accounts</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Created</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 700 }}>Actions</TableCell>
-                    </TableRow>
+            <TableContainer component={Paper} elevation={0}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 700 }}>User</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Role</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Email Accounts</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Created</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700 }}>Actions</TableCell>
+                  </TableRow>
                   </TableHead>
                   <TableBody>
                     {users.map((user) => (
@@ -433,7 +396,7 @@ export const AdminPage: React.FC = () => {
                         </TableCell>
                         <TableCell>
                           <Typography variant="body2" color="text.secondary">
-                            {new Date(user.createdAt).toLocaleDateString()}
+                            {formatDateWithSettings(user.createdAt, userSettings)}
                           </Typography>
                         </TableCell>
                         <TableCell align="right">
@@ -465,15 +428,14 @@ export const AdminPage: React.FC = () => {
                   </TableBody>
                 </Table>
               </TableContainer>
-            </Box>
           </Box>
         )}
 
         {/* Settings View */}
         {currentView === 'settings' && settings && (
-          <Box sx={{ flex: 1, overflow: 'auto' }}>
-            <Box sx={{ p: 4, borderBottom: 1, borderColor: 'divider' }}>
-              <Typography variant="h4" sx={{ fontWeight: 700, mb: 0.5 }}>
+          <Box sx={{ p: 3 }}>
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h5" sx={{ fontWeight: 600, mb: 0.5 }}>
                 Server Settings
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -481,7 +443,7 @@ export const AdminPage: React.FC = () => {
               </Typography>
             </Box>
 
-            <Box sx={{ p: 4, maxWidth: 800 }}>
+            <Box sx={{ maxWidth: 800 }}>
               <Card elevation={0} sx={{ border: 1, borderColor: 'divider', mb: 3 }}>
                 <CardContent sx={{ p: 3 }}>
                   <Typography variant="h6" sx={{ fontWeight: 700, mb: 3 }}>
@@ -556,6 +518,7 @@ export const AdminPage: React.FC = () => {
             </Box>
           </Box>
         )}
+        </Box>
       </Box>
 
       {/* Add User Dialog */}
@@ -714,7 +677,7 @@ export const AdminPage: React.FC = () => {
                     Account Created
                   </Typography>
                   <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                    {selectedUser?.createdAt && new Date(selectedUser.createdAt).toLocaleDateString()}
+                    {selectedUser?.createdAt && formatDateTimeWithSettings(selectedUser.createdAt, userSettings)}
                   </Typography>
                 </CardContent>
               </Card>
@@ -726,7 +689,7 @@ export const AdminPage: React.FC = () => {
                     Last Updated
                   </Typography>
                   <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                    {selectedUser?.updatedAt && new Date(selectedUser.updatedAt).toLocaleDateString()}
+                    {selectedUser?.updatedAt && formatDateTimeWithSettings(selectedUser.updatedAt, userSettings)}
                   </Typography>
                 </CardContent>
               </Card>
@@ -804,7 +767,7 @@ export const AdminPage: React.FC = () => {
                         </Box>
                         {account.lastSyncAt && (
                           <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                            Last synced: {new Date(account.lastSyncAt).toLocaleString()}
+                            Last synced: {formatDateTimeWithSettings(account.lastSyncAt, userSettings)}
                           </Typography>
                         )}
                       </CardContent>

@@ -26,7 +26,6 @@ router.get('/', async (req: AuthRequest, res: Response) => {
         smtpSecure: true,
         username: true,
         isActive: true,
-        lastSyncAt: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -62,7 +61,6 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
         smtpSecure: true,
         username: true,
         isActive: true,
-        lastSyncAt: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -190,16 +188,6 @@ router.post('/', async (req: AuthRequest, res: Response) => {
       },
     });
 
-    // Trigger initial sync in background
-    setTimeout(() => {
-      const { syncEmailAccount } = require('../services/imap.service');
-      syncEmailAccount(account.id).catch(console.error);
-      
-      // Start IDLE connection for real-time notifications
-      const { imapIdleManager } = require('../services/imap-idle.service');
-      imapIdleManager.startForAccount(account.id).catch(console.error);
-    }, 1000);
-
     res.status(201).json(account);
   } catch (error) {
     console.error('Create email account error:', error);
@@ -305,7 +293,6 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
         smtpSecure: true,
         username: true,
         isActive: true,
-        lastSyncAt: true,
         updatedAt: true,
       },
     });
@@ -332,10 +319,6 @@ router.delete('/:id', async (req: AuthRequest, res: Response) => {
     if (!account) {
       return res.status(404).json({ error: 'Email account not found' });
     }
-
-    // Stop IDLE connection before deleting
-    const { imapIdleManager } = require('../services/imap-idle.service');
-    await imapIdleManager.stopForAccount(id);
 
     await prisma.emailAccount.delete({
       where: { id },

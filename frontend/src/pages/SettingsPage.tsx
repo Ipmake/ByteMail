@@ -79,7 +79,7 @@ export const SettingsPage: React.FC = () => {
   }
 
   return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', width: '100%' }}>
       <Box sx={{ p: 3, borderBottom: 1, borderColor: 'divider' }}>
         <Typography variant="h4" fontWeight={600}>
           Settings

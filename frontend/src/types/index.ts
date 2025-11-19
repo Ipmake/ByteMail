@@ -28,7 +28,6 @@ export interface EmailAccount {
   smtpSecure: boolean;
   username: string;
   isActive: boolean;
-  lastSyncAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -47,16 +46,13 @@ export interface CreateEmailAccountData {
 }
 
 export interface Folder {
-  id: string;
-  emailAccountId: string;
+  delimiter: string;
   name: string;
   path: string;
-  delimiter: string;
   specialUse?: string;
-  unreadCount: number;
-  totalCount: number;
-  createdAt: string;
-  updatedAt: string;
+  total: number;
+  uidNext: number;
+  unread: number;
 }
 
 export interface EmailAddress {
@@ -110,6 +106,7 @@ export interface EmailListResponse {
     total: number;
     totalPages: number;
   };
+  hasMore: boolean;
 }
 
 export interface SendEmailData {

@@ -1,6 +1,15 @@
 import { createTheme } from "@mui/material/styles";
 
 export const theme = createTheme({
+  breakpoints: {
+    values: {
+      xs: 0,      // Mobile phones (portrait)
+      sm: 640,    // Mobile phones (landscape) and small tablets
+      md: 1024,   // Tablets (landscape) and small laptops
+      lg: 1440,   // Laptops and desktops
+      xl: 1920,   // Large desktops and monitors
+    },
+  },
   palette: {
     mode: "dark",
     primary: {

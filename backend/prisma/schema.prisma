@@ -61,67 +61,8 @@ model EmailAccount {
   username      String
   password      String    // Encrypted
   isActive      Boolean   @default(true)
-  lastSyncAt    DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-  folders       Folder[]
-  emails        Email[]
 
   @@map("email_accounts")
-}
-
-model Folder {
-  id             String       @id @default(uuid())
-  emailAccountId String
-  emailAccount   EmailAccount @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
-  name           String
-  path           String
-  delimiter      String       @default("/")
-  specialUse     String?      // INBOX, SENT, DRAFTS, TRASH, JUNK, etc.
-  unreadCount    Int          @default(0)
-  totalCount     Int          @default(0)
-  lastSyncedUid  Int?         // Track highest UID synced for incremental sync
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  emails         Email[]
-
-  @@unique([emailAccountId, path])
-  @@map("folders")
-}
-
-model Email {
-  id             String       @id @default(uuid())
-  emailAccountId String
-  emailAccount   EmailAccount @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
-  folderId       String
-  folder         Folder       @relation(fields: [folderId], references: [id], onDelete: Cascade)
-  messageId      String
-  uid            Int
-  subject        String?
-  from           Json         // Array of {name, address}
-  to             Json?        // Array of {name, address}
-  cc             Json?
-  bcc            Json?
-  replyTo        Json?
-  date           DateTime?
-  receivedDate   DateTime?
-  flags          String[]     @default([])
-  isRead         Boolean      @default(false)
-  isFlagged      Boolean      @default(false)
-  hasAttachments Boolean      @default(false)
-  size           Int          @default(0)
-  textBody       String?      @db.Text
-  htmlBody       String?      @db.Text
-  headers        Json?
-  attachments    Json?        // Array of attachment metadata
-  inReplyTo      String?
-  references     String[]     @default([])
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-
-  @@unique([emailAccountId, messageId])
-  @@index([folderId])
-  @@index([date])
-  @@index([isRead])
-  @@map("emails")
 }

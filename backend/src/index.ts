@@ -11,6 +11,7 @@ import emailRoutes from './routes/emails';
 import settingsRoutes from './routes/settings';
 import prisma from './db';
 import bcrypt from 'bcryptjs';
+import { socketManager } from './services/socket-connection-manager';
 
 const app = express();
 const httpServer = createServer(app);
@@ -62,59 +63,8 @@ io.on('connection', (socket) => {
     console.log('Client disconnected:', socket.id);
   });
 
-  // Join user room for notifications
-  socket.on('join:user', (userId: string) => {
-    socket.join(`user:${userId}`);
-    console.log(`[Socket] User ${userId} joined room user:${userId} (socket: ${socket.id})`);
-    
-    // Log all rooms this socket is in
-    const rooms = Array.from(socket.rooms);
-    console.log(`[Socket] Socket ${socket.id} is now in rooms:`, rooms);
-  });
-
-  // Join account room for IDLE notifications
-  socket.on('join:account', (accountId: string) => {
-    socket.join(`account:${accountId}`);
-    console.log(`[Socket] Joined room account:${accountId} (socket: ${socket.id})`);
-    
-    // Log all rooms this socket is in
-    const rooms = Array.from(socket.rooms);
-    console.log(`[Socket] Socket ${socket.id} is now in rooms:`, rooms);
-  });
-
-  // Start IDLE for an account
-  socket.on('idle:start', async (accountId: string) => {
-    console.log(`[Socket] Received idle:start request for account ${accountId}`);
-    const { imapIdleManager } = await import('./services/imap-idle.service.js');
-    try {
-      await imapIdleManager.startForAccount(accountId);
-      console.log(`[Socket] IDLE started successfully for account ${accountId}`);
-      socket.emit('idle:started', { accountId, success: true });
-    } catch (error) {
-      console.error(`[Socket] Failed to start IDLE for account ${accountId}:`, error);
-      socket.emit('idle:error', { accountId, error: error instanceof Error ? error.message : 'Failed to start IDLE' });
-    }
-  });
-
-  // Stop IDLE for an account
-  socket.on('idle:stop', async (accountId: string) => {
-    console.log(`Stopping IDLE for account ${accountId}`);
-    const { imapIdleManager } = await import('./services/imap-idle.service.js');
-    try {
-      await imapIdleManager.stopForAccount(accountId);
-      socket.emit('idle:stopped', { accountId, success: true });
-    } catch (error) {
-      console.error(`Failed to stop IDLE for account ${accountId}:`, error);
-    }
-  });
-
-  // Sync notifications
-  socket.on('sync:start', (data) => {
-    io.to(`user:${data.userId}`).emit('sync:progress', {
-      accountId: data.accountId,
-      status: 'syncing',
-    });
-  });
+  // Note: Authentication and IDLE connections are now handled by socketManager
+  // Clients should emit 'authenticate' event with JWT token to the socket
 });
 
 // Export io for use in other modules
@@ -157,24 +107,15 @@ async function start() {
   try {
     await initializeDatabase();
 
-    // Start IDLE connections for all active accounts
-    const { imapIdleManager } = await import('./services/imap-idle.service.js');
-    const activeAccounts = await prisma.emailAccount.findMany({
-      where: { isActive: true },
-      select: { id: true },
-    });
-
-    console.log(`Starting IDLE for ${activeAccounts.length} active accounts...`);
-    for (const account of activeAccounts) {
-      imapIdleManager.startForAccount(account.id).catch((error) => {
-        console.error(`Failed to start IDLE for account ${account.id}:`, error);
-      });
-    }
+    // Initialize socket connection manager
+    socketManager.initialize(io);
+    console.log('✅ Socket connection manager initialized');
 
     httpServer.listen(PORT, () => {
       console.log(`🚀 ByteMail server running on port ${PORT}`);
       console.log(`📧 Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`🔔 IDLE connections active for real-time notifications`);
+      console.log(`🔌 Socket.IO ready for client connections`);
+      console.log(`🔔 IDLE connections will be established per authenticated socket`);
     });
   } catch (error) {
     console.error('Failed to start server:', error);
@@ -189,8 +130,7 @@ process.on('SIGTERM', async () => {
   console.log('SIGTERM signal received: closing HTTP server');
   
   // Stop all IDLE connections
-  const { imapIdleManager } = await import('./services/imap-idle.service.js');
-  await imapIdleManager.stopAll();
+  await socketManager.shutdown();
   
   httpServer.close(() => {
     console.log('HTTP server closed');
@@ -203,8 +143,7 @@ process.on('SIGINT', async () => {
   console.log('SIGINT signal received: closing HTTP server');
   
   // Stop all IDLE connections
-  const { imapIdleManager } = await import('./services/imap-idle.service.js');
-  await imapIdleManager.stopAll();
+  await socketManager.shutdown();
   
   httpServer.close(() => {
     console.log('HTTP server closed');

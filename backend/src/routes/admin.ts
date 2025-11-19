@@ -58,7 +58,6 @@ router.get('/users/:id', async (req: AuthRequest, res: Response) => {
             smtpHost: true,
             smtpPort: true,
             isActive: true,
-            lastSyncAt: true,
             createdAt: true,
           },
           orderBy: { createdAt: 'desc' },

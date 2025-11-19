@@ -20,25 +20,19 @@ import {
   FormControlLabel,
   CircularProgress,
   Chip,
+  Alert,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
-import SyncIcon from '@mui/icons-material/Sync';
 import EditIcon from '@mui/icons-material/Edit';
-import { useNavigate } from 'react-router-dom';
 import { emailAccountsApi } from '../api';
 import { AddAccountDialog } from '../components/AddAccountDialog';
 import type { EmailAccount } from '../types';
-import { useSettingsStore } from '../stores/settingsStore';
-import { formatDateTimeWithSettings } from '../utils/dateFormatting';
 
 export const AccountsPage: React.FC = () => {
-  const navigate = useNavigate();
-  const { settings } = useSettingsStore();
   const [accounts, setAccounts] = useState<EmailAccount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [syncing, setSyncing] = useState<string | null>(null);
   const [editingAccount, setEditingAccount] = useState<EmailAccount | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
 
@@ -72,8 +66,6 @@ export const AccountsPage: React.FC = () => {
 
   const handleAddSuccess = () => {
     loadAccounts();
-    // Navigate back to mail after adding account
-    navigate('/');
   };
 
   const handleDelete = async (id: string) => {
@@ -84,18 +76,6 @@ export const AccountsPage: React.FC = () => {
       loadAccounts();
     } catch (error) {
       console.error('Failed to delete account:', error);
-    }
-  };
-
-  const handleSync = async (id: string) => {
-    setSyncing(id);
-    try {
-      await emailAccountsApi.sync(id);
-      loadAccounts();
-    } catch (error) {
-      console.error('Sync failed:', error);
-    } finally {
-      setSyncing(null);
     }
   };
 
@@ -167,7 +147,7 @@ export const AccountsPage: React.FC = () => {
   }
 
   return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', width: '100%' }}>
       <Box sx={{ p: 3, borderBottom: 1, borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 600, mb: 0.5 }}>
@@ -187,6 +167,10 @@ export const AccountsPage: React.FC = () => {
         </Button>
       </Box>
 
+      <Alert severity="info" sx={{ m: 3 }}>
+        After adding or editing an account, please <a href="#" onClick={() => window.location.reload()}>refresh</a> the page to ensure all changes take effect.
+      </Alert>
+
       <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
         <TableContainer component={Paper} elevation={2}>
           <Table>
@@ -197,7 +181,6 @@ export const AccountsPage: React.FC = () => {
                 <TableCell><strong>IMAP Server</strong></TableCell>
                 <TableCell><strong>SMTP Server</strong></TableCell>
                 <TableCell><strong>Status</strong></TableCell>
-                <TableCell><strong>Last Sync</strong></TableCell>
                 <TableCell align="right"><strong>Actions</strong></TableCell>
               </TableRow>
             </TableHead>
@@ -215,24 +198,7 @@ export const AccountsPage: React.FC = () => {
                       size="small"
                     />
                   </TableCell>
-                  <TableCell>
-                    {account.lastSyncAt
-                      ? formatDateTimeWithSettings(account.lastSyncAt, settings)
-                      : 'Never'}
-                  </TableCell>
                   <TableCell align="right">
-                    <IconButton
-                      size="small"
-                      onClick={() => handleSync(account.id)}
-                      disabled={syncing === account.id}
-                      title="Sync"
-                    >
-                      {syncing === account.id ? (
-                        <CircularProgress size={20} />
-                      ) : (
-                        <SyncIcon />
-                      )}
-                    </IconButton>
                     <IconButton
                       size="small"
                       onClick={() => handleEditClick(account)}

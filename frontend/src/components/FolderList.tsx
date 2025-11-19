@@ -1,451 +1,250 @@
-import React, { useState, useEffect } from 'react';
+import { useEffect, useState } from "react";
 import {
+  Box,
+  Button,
+  CircularProgress,
+  Collapse,
   List,
   ListItemButton,
   ListItemIcon,
   ListItemText,
-  Badge,
-  Box,
-  Typography,
-  Collapse,
-  IconButton,
-  Menu,
-  MenuItem,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  TextField,
-  Alert,
-} from '@mui/material';
-import InboxIcon from '@mui/icons-material/Inbox';
-import SendIcon from '@mui/icons-material/Send';
-import DraftsIcon from '@mui/icons-material/Drafts';
-import DeleteIcon from '@mui/icons-material/Delete';
-import StarIcon from '@mui/icons-material/Star';
-import FolderIcon from '@mui/icons-material/Folder';
-import ExpandLess from '@mui/icons-material/ExpandLess';
-import ExpandMore from '@mui/icons-material/ExpandMore';
-import MoreVertIcon from '@mui/icons-material/MoreVert';
-import CreateNewFolderIcon from '@mui/icons-material/CreateNewFolder';
-import EditIcon from '@mui/icons-material/Edit';
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import { emailsApi } from '../api';
-import type { Folder } from '../types';
+} from "@mui/material";
+import LoadingDisplay from "./LoadingDisplay";
+import {
+  ChevronLeft,
+  Delete,
+  Drafts,
+  Edit,
+  Folder as FolderIcon,
+  Inbox,
+  Send,
+  Star,
+} from "@mui/icons-material";
+import { emailAccountsApi, emailsApi } from "../api";
+import { useSocketStore } from "../stores/socketStore";
+import { useLocation, useNavigate } from "react-router-dom";
+import { 
+  useAccountStore,
+  type EmailAccountWithIdle 
+} from "../stores/accountStore";
+import { useComposeStore } from "../stores/composeStore";
 
-interface FolderListProps {
-  accountName: string;
-  accountId: string;
-  folders: Folder[];
-  selectedFolder: string | null;
-  onSelectFolder: (folderId: string) => void;
-  onFoldersChanged: () => void;
-}
-
-const getFolderIcon = (specialUse?: string | null, folderName?: string, folderPath?: string) => {
+const getFolderIcon = (
+  specialUse?: string | null,
+  folderName?: string,
+  folderPath?: string
+) => {
   // Check specialUse first
   const upperSpecialUse = specialUse?.toUpperCase();
-  
+
   switch (upperSpecialUse) {
-    case 'INBOX':
-    case '\\INBOX':
-      return <InboxIcon fontSize="small" />;
-    case 'SENT':
-    case '\\SENT':
-      return <SendIcon fontSize="small" />;
-    case 'DRAFTS':
-    case '\\DRAFTS':
-      return <DraftsIcon fontSize="small" />;
-    case 'TRASH':
-    case '\\TRASH':
-      return <DeleteIcon fontSize="small" />;
-    case 'JUNK':
-    case '\\JUNK':
-    case 'SPAM':
-      return <StarIcon fontSize="small" />;
+    case "INBOX":
+    case "\\INBOX":
+      return <Inbox fontSize="small" />;
+    case "SENT":
+    case "\\SENT":
+      return <Send fontSize="small" />;
+    case "DRAFTS":
+    case "\\DRAFTS":
+      return <Drafts fontSize="small" />;
+    case "TRASH":
+    case "\\TRASH":
+      return <Delete fontSize="small" />;
+    case "JUNK":
+    case "\\JUNK":
+    case "SPAM":
+      return <Star fontSize="small" />;
   }
-  
+
   // Fallback: check folder name/path if specialUse not set
-  const upperName = folderName?.toUpperCase() || '';
-  const upperPath = folderPath?.toUpperCase() || '';
-  
-  if (upperName === 'INBOX' || upperPath === 'INBOX') {
-    return <InboxIcon fontSize="small" />;
-  } else if (upperName === 'SENT' || upperName === 'SENT ITEMS' || upperPath.includes('SENT')) {
-    return <SendIcon fontSize="small" />;
-  } else if (upperName === 'DRAFTS' || upperPath.includes('DRAFT')) {
-    return <DraftsIcon fontSize="small" />;
-  } else if (upperName === 'TRASH' || upperName === 'DELETED' || upperPath.includes('TRASH')) {
-    return <DeleteIcon fontSize="small" />;
-  } else if (upperName === 'JUNK' || upperName === 'SPAM' || upperPath.includes('JUNK') || upperPath.includes('SPAM')) {
-    return <StarIcon fontSize="small" />;
+  const upperName = folderName?.toUpperCase() || "";
+  const upperPath = folderPath?.toUpperCase() || "";
+
+  if (upperName === "INBOX" || upperPath === "INBOX") {
+    return <Inbox fontSize="small" />;
+  } else if (
+    upperName === "SENT" ||
+    upperName === "SENT ITEMS" ||
+    upperPath.includes("SENT")
+  ) {
+    return <Send fontSize="small" />;
+  } else if (upperName === "DRAFTS" || upperPath.includes("DRAFT")) {
+    return <Drafts fontSize="small" />;
+  } else if (
+    upperName === "TRASH" ||
+    upperName === "DELETED" ||
+    upperPath.includes("TRASH")
+  ) {
+    return <Delete fontSize="small" />;
+  } else if (
+    upperName === "JUNK" ||
+    upperName === "SPAM" ||
+    upperPath.includes("JUNK") ||
+    upperPath.includes("SPAM")
+  ) {
+    return <Star fontSize="small" />;
   }
-  
+
   return <FolderIcon fontSize="small" />;
 };
 
-export const FolderList: React.FC<FolderListProps> = ({
-  accountName,
-  accountId,
-  folders,
-  selectedFolder,
-  onSelectFolder,
-  onFoldersChanged,
-}) => {
-  const [isExpanded, setIsExpanded] = useState(() => {
-    const saved = localStorage.getItem(`folder-expand-${accountId}`);
-    return saved === null ? true : saved === 'true';
-  });
-  
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const [folderMenuAnchor, setFolderMenuAnchor] = useState<null | HTMLElement>(null);
-  const [selectedMenuFolder, setSelectedMenuFolder] = useState<Folder | null>(null);
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [newFolderName, setNewFolderName] = useState('');
-  const [error, setError] = useState('');
-  const [isWorking, setIsWorking] = useState(false);
+function FolderList() {
+  const accounts = useAccountStore((state) => state.accounts);
+  const setAccounts = useAccountStore((state) => state.setAccounts);
 
   useEffect(() => {
-    localStorage.setItem(`folder-expand-${accountId}`, isExpanded.toString());
-  }, [isExpanded, accountId]);
+    emailAccountsApi
+      .getAll()
+      .then((acc) => {
+        // Sort accounts by email address
+        acc.sort((a, b) => a.emailAddress.localeCompare(b.emailAddress));
+        setAccounts(acc);
+      })
+      .catch((err) => {
+        console.error("Failed to load email accounts:", err);
+        setAccounts([]);
+      });
+  }, [setAccounts]);
+
+  return (
+    <Box
+      sx={{
+        width: 300,
+        height: "100%",
+        bgcolor: "background.default",
+        borderRight: 1,
+        borderColor: "divider",
+      }}
+    >
+      {!accounts ? (
+        <LoadingDisplay text="Loading accounts..." />
+      ) : (
+        <Box>
+          <Box sx={{ mb: 0, width: '100%', p: 2 }}>
+            <Button variant="contained" fullWidth disabled={accounts.filter(acc => acc.isIdleConnected).length === 0} onClick={() => useComposeStore.getState().openCompose("new")}>
+              <Edit fontSize="small" /> Compose
+            </Button>
+          </Box>
+          {accounts.map((account) => (
+            <CollapsibleAccount key={account.id} account={account} />
+          ))}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+function CollapsibleAccount({ account }: { account: EmailAccountWithIdle }) {
+  const { socket } = useSocketStore();
+  const folders = useAccountStore((state) => state.folders[account.id] || null);
+  const setFolders = useAccountStore((state) => state.setFolders);
+  const updateAccountIdleStatus = useAccountStore((state) => state.updateAccountIdleStatus);
+  const [expanded, setExpanded] = useState(false);
   
-  const specialFolders = folders.filter((f) => f.specialUse);
-  const regularFolders = folders.filter((f) => !f.specialUse);
+  const location = useLocation();
+  const navigate = useNavigate();
 
-  if (folders.length === 0) return null;
+  useEffect(() => {
+    const idleStartListener = (data: {
+      accountId: string;
+      success: boolean;
+    }) => {
+      if (data.accountId === account.id && data.success) {
+        socket?.off("idle:started", idleStartListener);
+        
+        // Update idle connection status
+        updateAccountIdleStatus(account.id, true);
 
-  const handleAccountMenuClick = (event: React.MouseEvent<HTMLElement>) => {
-    event.stopPropagation();
-    setAnchorEl(event.currentTarget);
-  };
+        emailsApi
+          .getFolders(account.id)
+          .then((fetchedFolders) => {
+            console.log(fetchedFolders);
+            fetchedFolders.sort((a, b) => {
+              // Folders with specialUse come first
+              const aHasSpecialUse = !!a.specialUse;
+              const bHasSpecialUse = !!b.specialUse;
 
-  const handleFolderMenuClick = (event: React.MouseEvent<HTMLElement>, folder: Folder) => {
-    event.stopPropagation();
-    setSelectedMenuFolder(folder);
-    setFolderMenuAnchor(event.currentTarget);
-  };
+              if (aHasSpecialUse && !bHasSpecialUse) return -1;
+              if (!aHasSpecialUse && bHasSpecialUse) return 1;
 
-  const handleCreateFolder = async () => {
-    if (!newFolderName.trim()) {
-      setError('Folder name cannot be empty');
-      return;
-    }
+              // Then sort alphabetically by name
+              return a.name.localeCompare(b.name);
+            });
+            setFolders(account.id, fetchedFolders);
 
-    setIsWorking(true);
-    setError('');
-    try {
-      await emailsApi.createFolder(accountId, newFolderName);
-      setCreateDialogOpen(false);
-      setNewFolderName('');
-      onFoldersChanged();
-    } catch (err) {
-      setError('Failed to create folder');
-      console.error(err);
-    } finally {
-      setIsWorking(false);
-    }
-  };
+            setExpanded(localStorage.getItem(`folderListExpanded_${account.id}`) === 'true');
+          })
+          .catch((err) => {
+            console.error(
+              `Failed to load folders for account ${account.emailAddress}:`,
+              err
+            );
+            setFolders(account.id, []);
+          });
+      }
+    };
 
-  const handleRenameFolder = async () => {
-    if (!selectedMenuFolder || !newFolderName.trim()) {
-      setError('Folder name cannot be empty');
-      return;
-    }
+    socket?.on("idle:started", idleStartListener);
 
-    setIsWorking(true);
-    setError('');
-    try {
-      await emailsApi.renameFolder(selectedMenuFolder.id, newFolderName);
-      setRenameDialogOpen(false);
-      setNewFolderName('');
-      setSelectedMenuFolder(null);
-      onFoldersChanged();
-    } catch (err) {
-      setError('Failed to rename folder');
-      console.error(err);
-    } finally {
-      setIsWorking(false);
-    }
-  };
+    socket?.emit("idle:start", { accountId: account.id });
 
-  const handleDeleteFolder = async () => {
-    if (!selectedMenuFolder) return;
-
-    setIsWorking(true);
-    setError('');
-    try {
-      await emailsApi.deleteFolder(selectedMenuFolder.id);
-      setDeleteDialogOpen(false);
-      setSelectedMenuFolder(null);
-      onFoldersChanged();
-    } catch (err) {
-      setError('Failed to delete folder');
-      console.error(err);
-    } finally {
-      setIsWorking(false);
-    }
-  };
+    return () => {
+      socket?.off("idle:started", idleStartListener);
+    };
+  }, [socket, account.id, account.emailAddress, setFolders, updateAccountIdleStatus]);
 
   return (
     <Box sx={{ mb: 0 }}>
       <ListItemButton
-        onClick={() => setIsExpanded(!isExpanded)}
-        sx={{
-          px: 2,
-          py: 1.5,
-          mb: 0,
-          bgcolor: 'rgba(160, 160, 160, 0.05)',
-          borderRadius: 0,
-          '&:hover': {
-            bgcolor: 'rgba(160, 160, 160, 0.1)',
-          },
+        sx={{ py: 1.5, px: 2 }}
+        onClick={() => {
+          localStorage.setItem(`folderListExpanded_${account.id}`, (!expanded).toString());
+          setExpanded(!expanded)
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', flex: 1, gap: 1 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', flex: 1 }}>
-            <ListItemText
-              primary={accountName}
-              primaryTypographyProps={{
-                fontWeight: 600,
-                fontSize: '0.875rem',
-                noWrap: true,
-              }}
-            />
-          </Box>
-          <IconButton
-            size="small"
-            onClick={handleAccountMenuClick}
-            sx={{ mr: 0 }}
-          >
-            <MoreVertIcon fontSize="small" />
-          </IconButton>
-          {isExpanded ? <ExpandLess /> : <ExpandMore />}
-        </Box>
+        <ListItemText primary={account.emailAddress} />
+
+        {!folders && <CircularProgress size={16} />}
+        {folders && (
+          <ChevronLeft
+            fontSize="small"
+            style={{
+              transform: expanded ? "rotate(90deg)" : "rotate(-90deg)",
+              transition: "transform 0.2s",
+            }}
+          />
+        )}
       </ListItemButton>
-
-      {/* Account Menu */}
-      <Menu
-        anchorEl={anchorEl}
-        open={Boolean(anchorEl)}
-        onClose={() => setAnchorEl(null)}
-      >
-        <MenuItem
-          onClick={() => {
-            setAnchorEl(null);
-            setCreateDialogOpen(true);
-          }}
-        >
-          <ListItemIcon>
-            <CreateNewFolderIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText>New Folder</ListItemText>
-        </MenuItem>
-      </Menu>
-
-      {/* Folder Context Menu */}
-      <Menu
-        anchorEl={folderMenuAnchor}
-        open={Boolean(folderMenuAnchor)}
-        onClose={() => setFolderMenuAnchor(null)}
-      >
-        <MenuItem
-          onClick={() => {
-            setFolderMenuAnchor(null);
-            if (selectedMenuFolder) {
-              setNewFolderName(selectedMenuFolder.name);
-              setRenameDialogOpen(true);
-            }
-          }}
-          disabled={selectedMenuFolder?.specialUse !== null}
-        >
-          <ListItemIcon>
-            <EditIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText>Rename</ListItemText>
-        </MenuItem>
-        <MenuItem
-          onClick={() => {
-            setFolderMenuAnchor(null);
-            setDeleteDialogOpen(true);
-          }}
-          disabled={selectedMenuFolder?.specialUse !== null}
-        >
-          <ListItemIcon>
-            <DeleteOutlineIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText>Delete</ListItemText>
-        </MenuItem>
-      </Menu>
-
-      {/* Folder List */}
-      <Collapse in={isExpanded} timeout="auto" unmountOnExit>
+      <Collapse in={expanded} timeout="auto" unmountOnExit>
         <List dense sx={{ px: 0.5, pb: 1 }}>
-          {/* Special Folders */}
-          {specialFolders.map((folder) => (
+          {folders?.map((folder) => (
             <ListItemButton
-              key={folder.id}
-              selected={selectedFolder === folder.id}
-              onClick={() => onSelectFolder(folder.id)}
+              key={encodeURIComponent(account.id  + folder.path)}
+              selected={
+                location.pathname === `/mail/${account.id}/${encodeURIComponent(folder.path)}`
+              }
               sx={{
                 borderRadius: 1,
                 pl: 2,
-                '&.Mui-selected': {
-                  bgcolor: 'primary.dark',
-                  '&:hover': {
-                    bgcolor: 'primary.dark',
+                "&.Mui-selected": {
+                  bgcolor: "primary.dark",
+                  "&:hover": {
+                    bgcolor: "primary.dark",
                   },
                 },
               }}
+              onClick={() => navigate(`/mail/${account.id}/${encodeURIComponent(folder.path)}`)}
             >
               <ListItemIcon sx={{ minWidth: 36 }}>
                 {getFolderIcon(folder.specialUse, folder.name, folder.path)}
               </ListItemIcon>
-              <ListItemText
-                primary={folder.name}
-                primaryTypographyProps={{
-                  fontSize: '0.875rem',
-                  fontWeight: selectedFolder === folder.id ? 600 : 400,
-                }}
-              />
-              {folder.unreadCount > 0 && (
-                <Badge badgeContent={folder.unreadCount} color="primary" />
-              )}
-            </ListItemButton>
-          ))}
-
-          {/* Regular Folders */}
-          {regularFolders.length > 0 && specialFolders.length > 0 && (
-            <Box sx={{ px: 2, py: 1 }}>
-              <Typography variant="caption" color="text.secondary">
-                FOLDERS
-              </Typography>
-            </Box>
-          )}
-          {regularFolders.map((folder) => (
-            <ListItemButton
-              key={folder.id}
-              selected={selectedFolder === folder.id}
-              onClick={() => onSelectFolder(folder.id)}
-              sx={{
-                borderRadius: 1,
-                mb: 0.5,
-                pl: 2,
-                '&.Mui-selected': {
-                  bgcolor: 'primary.dark',
-                  '&:hover': {
-                    bgcolor: 'primary.dark',
-                  },
-                },
-              }}
-            >
-              <ListItemIcon sx={{ minWidth: 36 }}>
-                {getFolderIcon(folder.specialUse, folder.name, folder.path)}
-              </ListItemIcon>
-              <ListItemText
-                primary={folder.name}
-                primaryTypographyProps={{
-                  fontSize: '0.875rem',
-                  fontWeight: selectedFolder === folder.id ? 600 : 400,
-                }}
-              />
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                {folder.unreadCount > 0 && (
-                  <Badge badgeContent={folder.unreadCount} color="primary" />
-                )}
-                <IconButton
-                  size="small"
-                  onClick={(e) => handleFolderMenuClick(e, folder)}
-                  sx={{ opacity: 0.7, '&:hover': { opacity: 1 } }}
-                >
-                  <MoreVertIcon fontSize="small" />
-                </IconButton>
-              </Box>
+              <ListItemText primary={folder.name} />
             </ListItemButton>
           ))}
         </List>
       </Collapse>
-
-      {/* Create Folder Dialog */}
-      <Dialog open={createDialogOpen} onClose={() => !isWorking && setCreateDialogOpen(false)}>
-        <DialogTitle>Create New Folder</DialogTitle>
-        <DialogContent>
-          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Folder Name"
-            fullWidth
-            value={newFolderName}
-            onChange={(e) => setNewFolderName(e.target.value)}
-            disabled={isWorking}
-            onKeyPress={(e) => {
-              if (e.key === 'Enter') {
-                handleCreateFolder();
-              }
-            }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCreateDialogOpen(false)} disabled={isWorking}>
-            Cancel
-          </Button>
-          <Button onClick={handleCreateFolder} variant="contained" disabled={isWorking}>
-            Create
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Rename Folder Dialog */}
-      <Dialog open={renameDialogOpen} onClose={() => !isWorking && setRenameDialogOpen(false)}>
-        <DialogTitle>Rename Folder</DialogTitle>
-        <DialogContent>
-          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-          <TextField
-            autoFocus
-            margin="dense"
-            label="New Folder Name"
-            fullWidth
-            value={newFolderName}
-            onChange={(e) => setNewFolderName(e.target.value)}
-            disabled={isWorking}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                handleRenameFolder();
-              }
-            }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setRenameDialogOpen(false)} disabled={isWorking}>
-            Cancel
-          </Button>
-          <Button onClick={handleRenameFolder} variant="contained" disabled={isWorking}>
-            Rename
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Delete Folder Dialog */}
-      <Dialog open={deleteDialogOpen} onClose={() => !isWorking && setDeleteDialogOpen(false)}>
-        <DialogTitle>Delete Folder</DialogTitle>
-        <DialogContent>
-          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-          <Typography>
-            Are you sure you want to delete the folder "{selectedMenuFolder?.name}"? This action cannot be undone.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteDialogOpen(false)} disabled={isWorking}>
-            Cancel
-          </Button>
-          <Button onClick={handleDeleteFolder} variant="contained" color="error" disabled={isWorking}>
-            Delete
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
-};
+}
+
+export default FolderList;
